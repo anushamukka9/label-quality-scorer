@@ -30,7 +30,7 @@ def cohen_kappa(labels_a, labels_b):
     """Cohen's kappa for two aligned label lists.
 
     Returns 1.0 for perfect agreement, 0.0 for chance-level agreement.
-    Returns 0.0 (not NaN) when a rater shows no variation — kappa is
+    Returns 0.0 (not NaN) when a rater shows no variation - kappa is
     undefined there, and 0.0 is the honest "no measurable agreement" value.
     """
     a = list(labels_a)
@@ -79,12 +79,59 @@ def fleiss_kappa(item_labels):
     return (p_bar - p_expected) / (1.0 - p_expected)
 
 
+def krippendorff_alpha(item_labels):
+    """Krippendorff's alpha (nominal metric) for 2+ raters.
+
+    ``item_labels`` is a list of per-item label lists (one entry per rating).
+    Unlike Fleiss' kappa this handles missing ratings naturally: items may
+    have differing rater counts, and items with fewer than 2 ratings are
+    ignored. Good for the common case where not every annotator rated every
+    item.
+
+    Returns 1.0 for perfect agreement, 0.0 for chance-level agreement, and
+    0.0 (not NaN) when the labels show no variation to measure.
+    """
+    units = [list(g) for g in item_labels if len(g) >= 2]
+    if not units:
+        raise ValueError(
+            "krippendorff_alpha needs at least one item with 2+ ratings"
+        )
+    values = sorted({lab for g in units for lab in g}, key=str)
+    if len(values) < 2:
+        return 0.0  # no variation: nothing to measure
+
+    # Coincidence matrix: for each unit with m ratings, every ordered pair
+    # of distinct positions contributes 1/(m - 1) to its (value, value) cell.
+    coinc = {c: {k: 0.0 for k in values} for c in values}
+    for g in units:
+        m = len(g)
+        for i in range(m):
+            for j in range(m):
+                if i != j:
+                    coinc[g[i]][g[j]] += 1.0 / (m - 1)
+
+    marginal = {c: sum(coinc[c].values()) for c in values}
+    total = sum(marginal.values())
+    off_diag = sum(
+        coinc[c][k] for c in values for k in values if c != k
+    )
+    # Nominal distance: 0 on the diagonal, 1 off it.
+    do = off_diag / total
+    de = (
+        sum(marginal[c] * marginal[k] for c in values for k in values if c != k)
+        / (total * (total - 1))
+    )
+    if de <= 0:
+        return 0.0
+    return 1.0 - do / de
+
+
 def pairwise_kappa_matrix(records):
     """Mean Cohen's kappa for every annotator pair over their shared items.
 
     Returns a dict {(annotator_a, annotator_b): kappa or None}.
     ``None`` means the pair shares fewer than 2 items or has no label
-    variation (kappa undefined) — treated as "cannot measure", not as zero.
+    variation (kappa undefined) - treated as "cannot measure", not as zero.
     """
     by_annotator = defaultdict(dict)
     for r in records:
