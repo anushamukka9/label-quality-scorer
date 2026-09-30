@@ -6,6 +6,7 @@ import json
 import sys
 
 from .report import LabelQualityConfig, score_annotations
+from .agreement import group_by_item, krippendorff_alpha
 
 
 def _load_annotations(path, item_col, annotator_col, label_col):
@@ -70,7 +71,7 @@ def _load_features(path, item_col="item_id"):
     return features
 
 
-def _print_summary(report):
+def _print_summary(report, records):
     s = report["summary"]
     print("=== label-quality-scorer ===")
     print(f"items: {s['n_items']} | annotators: {s['n_annotators']} "
@@ -80,6 +81,13 @@ def _print_summary(report):
     print(f"percent agreement: {pa:.3f}" if pa == pa else "percent agreement: n/a")
     print(f"Fleiss' kappa: {fk:.3f}" if fk is not None else "Fleiss' kappa: n/a "
           "(need 2+ raters per item)")
+    multi = [
+        [lab for _, lab in pairs]
+        for pairs in group_by_item(records).values()
+        if len(pairs) >= 2
+    ]
+    if multi:
+        print(f"Krippendorff's alpha: {krippendorff_alpha(multi):.3f}")
     print(f"class imbalance ratio: {s['imbalance_ratio']}")
     if s["minority_classes"]:
         print(f"minority classes: {', '.join(map(str, s['minority_classes']))}")
@@ -130,7 +138,7 @@ def main(argv=None):
 
     with open(args.output, "w", encoding="utf-8") as fh:
         json.dump(report, fh, indent=2, default=str)
-    _print_summary(report)
+    _print_summary(report, records)
     print(f"\nfull report written to {args.output}")
     return 0
 
