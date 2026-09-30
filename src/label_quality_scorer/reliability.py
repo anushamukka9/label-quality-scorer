@@ -37,7 +37,7 @@ def annotator_profiles(records):
         majority label (ties resolved deterministically)
       - mean_pairwise_kappa: mean Cohen's kappa vs. every other annotator
         over shared items (None when not measurable)
-      - label_entropy: entropy of their own label distribution — near 0.0
+      - label_entropy: entropy of their own label distribution - near 0.0
         means they stamp one label on everything
       - top_class_bias: their most-used class's share minus the global share
         (positive = they overuse that class relative to the pool)
@@ -103,3 +103,19 @@ def annotator_profiles(records):
             "reliability_score": reliability,
         }
     return profiles
+
+
+def rank_annotators(records):
+    """Rank annotators by reliability score, most reliable first.
+
+    Returns a list of ``(annotator, reliability_score, profile)`` tuples,
+    sorted by ``reliability_score`` descending (ties broken by name). Handy
+    for deciding whose ratings to trust, whose to re-train, and whose to
+    down-weight when adjudicating.
+    """
+    profiles = annotator_profiles(records)
+    ranked = sorted(
+        profiles.items(),
+        key=lambda kv: (-kv[1]["reliability_score"], kv[0]),
+    )
+    return [(name, prof["reliability_score"], prof) for name, prof in ranked]
