@@ -1,11 +1,11 @@
-# Usage guide — label-quality-scorer
+# Usage guide - label-quality-scorer
 
 This guide covers the full workflow: preparing data, running the CLI,
 interpreting the report, and using the Python API directly.
 
 ## 1. Preparing your annotations
 
-The core input is a table of individual ratings — one row per
+The core input is a table of individual ratings - one row per
 (annotator, item) pair:
 
 | column     | meaning                              |
@@ -29,7 +29,7 @@ toward class-imbalance stats but are excluded from agreement metrics.
 
 To enable the cross-validated self-consistency check, supply a second CSV
 mapping each `item_id` to numeric features (embeddings, text stats,
-sensor readings — anything fixed-length and numeric):
+sensor readings - anything fixed-length and numeric):
 
 ```csv
 item_id,len_chars,exclaim_count,sentiment_lexicon
@@ -58,25 +58,27 @@ JSON report to `-o`.
 
 ## 3. Reading the report
 
-- **`summary`** — headline numbers: counts, percent agreement, Fleiss'
+- **`summary`** - headline numbers: counts, percent agreement, Fleiss'
   kappa, imbalance ratio, minority classes, suspicious-label count.
-- **`agreement`** — overall percent agreement, Fleiss' kappa across all
+- **`agreement`** - overall percent agreement, Fleiss' kappa across all
   items with 2+ raters, and the pairwise Cohen's kappa matrix
   (`null` = pair shares too few items to measure).
-- **`annotator_profiles`** — per-rater reliability: agreement with the
+- **`annotator_profiles`** - per-rater reliability: agreement with the
   majority label, mean pairwise kappa, own-label entropy (near 0 means
-  they stamp one label on everything), class bias, and a 0–1
+  they stamp one label on everything), class bias, and a 0-1
   `reliability_score`.
-- **`disagreement_hotspots`** — items ranked by normalized label entropy:
+- **`disagreement_hotspots`** - items ranked by normalized label entropy:
   the items your raters fought over most. Re-annotate or adjudicate these
-  first.
-- **`class_distribution`** — counts, proportions, imbalance ratio
+  first. `disagreement_report(records)` gives the same ranking with
+  rater-level detail: who assigned which label, per-item pairwise agreement,
+  and the minority labels.
+- **`class_distribution`** - counts, proportions, imbalance ratio
   (largest/smallest class), Gini coefficient, effective number of classes,
   and classes below the minority threshold.
-- **`self_consistency`** — per item: the cross-validated predicted label,
+- **`self_consistency`** - per item: the cross-validated predicted label,
   `plausibility` (fraction of folds agreeing with the consensus label),
   and a `suspicious` flag when plausibility < 0.5.
-- **`review_queue`** — every item ranked by composite risk:
+- **`review_queue`** - every item ranked by composite risk:
   `0.4 * entropy + 0.3 * (1 - mean annotator reliability) +
   0.3 * (1 - plausibility)`, each with human-readable reasons. Hand the
   top of this list to your adjudicators.
@@ -85,8 +87,9 @@ JSON report to `-o`.
 
 ```python
 from label_quality_scorer import (
-    score_annotations, cohen_kappa, fleiss_kappa,
-    annotator_profiles, build_review_queue,
+    score_annotations, cohen_kappa, fleiss_kappa, krippendorff_alpha,
+    annotator_profiles, rank_annotators, disagreement_report,
+    build_review_queue,
 )
 
 records = [
@@ -100,29 +103,44 @@ report = score_annotations(records, features={"t1": [0.1, 0.9]})
 # Or use the pieces individually:
 kappa = cohen_kappa(["a", "a", "b"], ["a", "b", "b"])
 profiles = annotator_profiles(records)
+ranking = rank_annotators(records)      # [(annotator, score, profile), ...]
+disputes = disagreement_report(records) # per-item rater-level detail
 queue = build_review_queue(records)
 ```
+
+### Choosing an agreement metric
+
+- `cohen_kappa(a, b)` - exactly two raters, aligned label lists.
+- `fleiss_kappa(item_labels)` - three or more raters, every item rated by
+  the same number of raters.
+- `krippendorff_alpha(item_labels)` - any rater count, and items may have
+  different numbers of ratings (missing data is fine). Reach for this when
+  not every annotator rated every item, which is the usual case in
+  production labeling.
+
+All three return 1.0 for perfect agreement and 0.0 for chance-level
+agreement.
 
 ## 5. Tuning
 
 Pass a `LabelQualityConfig` to `score_annotations`:
 
-- `hotspot_top_n` / `review_queue_top_n` — list lengths
-- `minority_threshold` — class-share cutoff for minority flags (default 0.05)
-- `cv_folds` — folds for the self-consistency check (default 5; reduced
+- `hotspot_top_n` / `review_queue_top_n` - list lengths
+- `minority_threshold` - class-share cutoff for minority flags (default 0.05)
+- `cv_folds` - folds for the self-consistency check (default 5; reduced
   automatically on tiny datasets)
-- `review_weights` — rebalance the review-queue risk blend
+- `review_weights` - rebalance the review-queue risk blend
 
 ## 6. Interpreting kappa
 
 | kappa range | reading              |
 |-------------|----------------------|
-| 0.81 – 1.00 | near-perfect agreement |
-| 0.61 – 0.80 | substantial          |
-| 0.41 – 0.60 | moderate             |
-| 0.21 – 0.40 | fair                 |
+| 0.81 - 1.00 | near-perfect agreement |
+| 0.61 - 0.80 | substantial          |
+| 0.41 - 0.60 | moderate             |
+| 0.21 - 0.40 | fair                 |
 | ≤ 0.20      | slight / chance-level |
 
 Low kappa with high percent agreement usually means a skewed class
-distribution (raters agree on the dominant class by default) — check the
+distribution (raters agree on the dominant class by default) - check the
 class-distribution section before rewriting your guidelines.
