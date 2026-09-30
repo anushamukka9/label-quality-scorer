@@ -16,10 +16,13 @@ from label_quality_scorer import (  # noqa: E402
     class_distribution,
     cohen_kappa,
     disagreement_hotspots,
+    disagreement_report,
     fleiss_kappa,
     item_entropy,
+    krippendorff_alpha,
     pairwise_kappa_matrix,
     percent_agreement,
+    rank_annotators,
     score_annotations,
     self_consistency_flags,
 )
@@ -59,6 +62,38 @@ def test_fleiss_kappa_known_value():
 def test_fleiss_kappa_perfect_agreement():
     groups = [["x", "x", "x"], ["y", "y", "y"], ["x", "x"]]
     assert fleiss_kappa(groups) == pytest.approx(1.0)
+
+
+def test_krippendorff_alpha_known_value():
+    # Hand-computed coincidence matrix: alpha = 7/18 ~= 0.3889
+    groups = [
+        ["A", "A", "A"],
+        ["A", "A", "B"],
+        ["B", "B", "B"],
+        ["A", "B", "B"],
+    ]
+    assert krippendorff_alpha(groups) == pytest.approx(7 / 18)
+
+
+def test_krippendorff_alpha_perfect_agreement():
+    groups = [["x", "x", "x"], ["y", "y", "y"], ["x", "x"]]
+    assert krippendorff_alpha(groups) == pytest.approx(1.0)
+
+
+def test_krippendorff_alpha_no_variation_is_zero():
+    assert krippendorff_alpha([["x", "x"], ["x", "x", "x"]]) == 0.0
+
+
+def test_krippendorff_alpha_handles_missing_ratings():
+    # Uneven rater counts per item: still measurable, no crash.
+    groups = [["a", "a", "b"], ["b", "b"], ["a", "b", "b"]]
+    alpha = krippendorff_alpha(groups)
+    assert -1.0 <= alpha <= 1.0
+
+
+def test_krippendorff_alpha_rejects_single_rating_items():
+    with pytest.raises(ValueError):
+        krippendorff_alpha([["a"], ["b"]])
 
 
 def test_pairwise_kappa_matrix_shapes():
@@ -101,6 +136,25 @@ def test_disagreement_hotspots_ranking():
     assert hot[1]["item_id"] == "calm"
 
 
+def test_disagreement_report_rater_level_detail():
+    records = [
+        rec("split", "a", "pos"), rec("split", "b", "neg"), rec("split", "c", "pos"),
+        rec("calm", "a", "pos"), rec("calm", "b", "pos"),
+    ]
+    rep = disagreement_report(records)
+    assert rep[0]["item_id"] == "split"  # highest entropy first
+    row = rep[0]
+    assert row["n_raters"] == 3
+    assert row["ratings"] == {"a": "pos", "b": "neg", "c": "pos"}
+    assert row["majority_label"] == "pos"
+    assert row["minority_labels"] == ["neg"]
+    assert row["pairwise_agreement"] == pytest.approx(1 / 3, abs=1e-3)
+    assert row["label_counts"] == {"pos": 2, "neg": 1}
+    # single-rater items are excluded
+    rep2 = disagreement_report([rec("solo", "a", "pos")])
+    assert rep2 == []
+
+
 # -------------------------------------------------------------- reliability
 
 def test_annotator_profiles_detects_outlier():
@@ -114,6 +168,20 @@ def test_annotator_profiles_detects_outlier():
     assert profiles["good1"]["reliability_score"] > profiles["outlier"]["reliability_score"]
     assert profiles["outlier"]["agreement_with_majority"] == pytest.approx(0.0)
     assert profiles["outlier"]["label_entropy"] == pytest.approx(0.0)
+
+
+def test_rank_annotators_sorts_by_reliability():
+    records = []
+    for i in range(6):
+        records += [rec(f"i{i}", "good1", "pos"), rec(f"i{i}", "good2", "pos")]
+    for i in range(6):
+        records.append(rec(f"i{i}", "outlier", "neg"))
+    ranked = rank_annotators(records)
+    names = [name for name, _, _ in ranked]
+    scores = [score for _, score, _ in ranked]
+    assert names[-1] == "outlier"
+    assert scores == sorted(scores, reverse=True)
+    assert ranked[0][2]["n_items"] == 6  # profile dict carried along
 
 
 # --------------------------------------------------------------- imbalance
