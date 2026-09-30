@@ -3,7 +3,7 @@
 Given consensus labels plus numeric feature vectors per item, train a simple
 nearest-centroid classifier on stratified folds and check whether each item's
 label survives cross-validation. Items whose consensus label is repeatedly
-*not* predicted are flagged as suspicious — a cheap, model-based second
+*not* predicted are flagged as suspicious - a cheap, model-based second
 opinion on the annotations.
 
 Pure numpy, fully deterministic (stratified round-robin folds, no RNG).
@@ -56,7 +56,7 @@ def self_consistency_flags(items, features, n_folds=5):
 
     Items lacking features are skipped. When there are fewer than 2 classes
     or too few items for meaningful folds, every covered item keeps
-    plausibility 1.0 (nothing measurable — not flagged).
+    plausibility 1.0 (nothing measurable - not flagged).
     """
     covered = [(iid, lab) for iid, lab in items if iid in features]
     labels = sorted({lab for _, lab in covered}, key=str)
