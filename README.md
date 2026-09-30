@@ -2,13 +2,13 @@
 
 Score **annotation quality** for classification datasets: inter-annotator
 agreement, annotator reliability, disagreement hotspots, class-imbalance
-diagnostics, suspicious-label detection — and a **ranked review queue** so
+diagnostics, suspicious-label detection - and a **ranked review queue** so
 adjudicators triage the riskiest items first.
 
 Bad labels silently cap model quality. `label-quality-scorer` answers the
 questions annotation leads actually ask: *do my raters agree?* (Cohen's /
-Fleiss' kappa), *which items are they fighting over?* (label entropy),
-*which raters can I trust?* (reliability profiles), *is the class balance
+Fleiss' kappa, Krippendorff's alpha), *which items are they fighting over?*
+(label entropy), *which raters can I trust?* (reliability profiles), *is the class balance
 sane?* (imbalance diagnostics), and *which labels would a model disagree
 with?* (cross-validated self-consistency flags).
 
@@ -48,10 +48,11 @@ print(report["summary"]["fleiss_kappa"])
 print(report["review_queue"][0])   # riskiest item, with reasons
 ```
 
-Or run the bundled example:
+Or run the bundled examples:
 
 ```bash
-python examples/quickstart.py
+python examples/quickstart.py          # full pipeline report
+python examples/disagreement_review.py # alpha, annotator ranking, disagreement report
 ```
 
 ## API
@@ -61,11 +62,14 @@ python examples/quickstart.py
 | `score_annotations(records, features=None, config=None)` | Full pipeline → JSON-serializable report dict |
 | `cohen_kappa(a, b)` | Pairwise rater agreement, chance-corrected |
 | `fleiss_kappa(item_labels)` | Multi-rater agreement (3+ raters) |
+| `krippendorff_alpha(item_labels)` | Nominal alpha, handles missing ratings per item |
 | `pairwise_kappa_matrix(records)` | Cohen's kappa for every annotator pair |
 | `percent_agreement(records)` | Mean per-item raw agreement |
 | `item_entropy(labels)` | Normalized label entropy for one item |
 | `disagreement_hotspots(records, top_n=20)` | Items ranked by rater disagreement |
+| `disagreement_report(records, top_n=20)` | Per-item report: who said what, entropy, pairwise agreement |
 | `annotator_profiles(records)` | Per-rater reliability scores + bias diagnostics |
+| `rank_annotators(records)` | Annotators ranked by reliability, most reliable first |
 | `class_distribution(labels)` | Counts, imbalance ratio, Gini, minority classes |
 | `self_consistency_flags(items, features, n_folds=5)` | k-fold CV suspicious-label flags |
 | `build_review_queue(records, ...)` | Composite-risk ranked triage list |
@@ -77,9 +81,9 @@ report fields, tuning, and how to read kappa values.
 
 ```
 src/label_quality_scorer/
-├── agreement.py        # Cohen's kappa, Fleiss' kappa, pairwise matrix
-├── entropy.py          # per-item label entropy, disagreement hotspots
-├── reliability.py      # annotator reliability profiles
+├── agreement.py        # Cohen's kappa, Fleiss' kappa, Krippendorff's alpha, pairwise matrix
+├── entropy.py          # per-item label entropy, disagreement hotspots + report
+├── reliability.py      # annotator reliability profiles + ranking
 ├── imbalance.py        # class distribution diagnostics
 ├── self_consistency.py # k-fold CV suspicious-label detection (numpy only)
 ├── review_queue.py     # composite-risk ranked triage list
@@ -89,13 +93,13 @@ src/label_quality_scorer/
 
 Design notes:
 
-- **Long-format input** — one row per (item, annotator) rating, so rater
+- **Long-format input** - one row per (item, annotator) rating, so rater
   counts can vary per item.
-- **Deterministic everywhere** — majority-vote ties break by sort order,
+- **Deterministic everywhere** - majority-vote ties break by sort order,
   CV folds are stratified round-robin; no RNG, no flaky outputs.
-- **Honest missing values** — unmeasurable kappas are `None`, not zero;
+- **Honest missing values** - unmeasurable kappas are `None`, not zero;
   single-rater items skip agreement math but still feed imbalance stats.
-- **Light dependency footprint** — `numpy` only. The self-consistency
+- **Light dependency footprint** - `numpy` only. The self-consistency
   classifier is a nearest-centroid model implemented in ~30 lines, so the
   whole tool stays auditable.
 
@@ -106,6 +110,7 @@ Design notes:
 items: 15 | annotators: 3 | annotations: 42
 percent agreement: 0.733
 Fleiss' kappa: 0.564
+Krippendorff's alpha: 0.544
 class imbalance ratio: 2.333
 suspicious labels (self-consistency): 1
 
@@ -115,6 +120,6 @@ Top review queue items:
 
 ## License
 
-MIT — Copyright (c) 2026 Anusha Mukka. See [LICENSE](LICENSE).
+MIT - Copyright (c) 2026 Anusha Mukka. See [LICENSE](LICENSE).
 
 Author: [Anusha Mukka](https://anushamukka.com)
