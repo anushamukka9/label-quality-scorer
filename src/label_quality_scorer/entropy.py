@@ -55,3 +55,48 @@ def disagreement_hotspots(records, top_n=20, min_raters=2):
         )
     rows.sort(key=lambda r: (-r["entropy"], -r["n_raters"], str(r["item_id"])))
     return rows[:top_n] if top_n else rows
+
+
+def disagreement_report(records, top_n=20):
+    """Per-item disagreement report with rater-level detail.
+
+    For every item with 2+ raters, reports: item_id, n_raters, the label each
+    annotator assigned, majority_label, normalized label entropy, pairwise
+    percent agreement among raters (share of agreeing rater pairs), and the
+    minority labels. Sorted by entropy descending: the hardest disagreements
+    come first, each with the full rater breakdown so an adjudicator can see
+    exactly who said what.
+    """
+    from .agreement import majority_label
+
+    groups = group_by_item(records)
+    rows = []
+    for item_id, pairs in groups.items():
+        labels = [lab for _, lab in pairs]
+        if len(labels) < 2:
+            continue
+        counts = defaultdict(int)
+        for lab in labels:
+            counts[lab] += 1
+        n = len(labels)
+        agreeing_pairs = sum(v * (v - 1) // 2 for v in counts.values())
+        total_pairs = n * (n - 1) // 2
+        majority = majority_label(labels)
+        rows.append(
+            {
+                "item_id": item_id,
+                "n_raters": n,
+                "ratings": {annotator: lab for annotator, lab in pairs},
+                "majority_label": majority,
+                "minority_labels": sorted(
+                    str(c) for c in counts if c != majority
+                ),
+                "entropy": round(item_entropy(labels), 4),
+                "pairwise_agreement": round(agreeing_pairs / total_pairs, 4),
+                "label_counts": dict(counts),
+            }
+        )
+    rows.sort(
+        key=lambda r: (-r["entropy"], -r["n_raters"], str(r["item_id"]))
+    )
+    return rows[:top_n] if top_n else rows
